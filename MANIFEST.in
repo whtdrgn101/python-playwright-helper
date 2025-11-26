@@ -1,0 +1,6 @@
+include README.md
+include LICENSE
+include application.properties.example
+recursive-include templates *.j2
+recursive-include templates *.csv
+
