@@ -57,6 +57,28 @@ class TestConfig(BaseSettings):
         description="Connection timeout in milliseconds",
     )
 
+    # Logging Configuration
+    log_directory: str = Field(
+        default="logs",
+        description="Directory where log files will be written",
+    )
+    log_level: str = Field(
+        default="INFO",
+        description="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)",
+    )
+    log_request_body: bool = Field(
+        default=True,
+        description="Whether to log request bodies",
+    )
+    log_response_body: bool = Field(
+        default=True,
+        description="Whether to log response bodies",
+    )
+    log_mask_sensitive_headers: bool = Field(
+        default=True,
+        description="Whether to mask sensitive headers (Authorization, etc.) in logs",
+    )
+
     @classmethod
     def get_instance(cls) -> "TestConfig":
         """Get singleton instance of TestConfig."""

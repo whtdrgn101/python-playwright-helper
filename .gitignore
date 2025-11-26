@@ -39,7 +39,12 @@ ENV/
 htmlcov/
 .tox/
 
-# Application properties (may contain secrets)
+# Logs
+logs/
+*.log
+
+# Environment files (may contain secrets)
+.env
 application.properties
 
 # OS

@@ -7,6 +7,7 @@ from rest_api_testing.config import get_config
 from rest_api_testing.auth import AuthenticationService
 from rest_api_testing.template import TemplateService
 from rest_api_testing.playwright_api import PlaywrightApiRequest
+from rest_api_testing.logging_setup import setup_logging, log_config
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,14 @@ class BaseApiTest:
         # Initialize static resources if not already done
         if BaseApiTest._config is None:
             BaseApiTest._config = get_config()
+            # Set up logging with configuration
+            setup_logging(
+                log_directory=BaseApiTest._config.log_directory,
+                log_level=BaseApiTest._config.log_level,
+                log_to_console=True,
+            )
+            # Log configuration at startup
+            log_config(BaseApiTest._config)
             BaseApiTest._auth_service = AuthenticationService.get_instance()
             BaseApiTest._template_service = TemplateService.get_instance()
             BaseApiTest._playwright = sync_playwright().start()
@@ -35,9 +44,12 @@ class BaseApiTest:
         self._api_request_context: Optional[APIRequestContext] = None
         self._unauthenticated_api_request_context: Optional[APIRequestContext] = None
 
-    def setup_method(self):
+    def setup_method(self, method=None):
         """Setup method called before each test (pytest fixture)."""
-        logger.info("Setting up test: %s", self.__class__.__name__)
+        test_name = method.__name__ if method else "unknown"
+        logger.info("=" * 80)
+        logger.info("Starting test: %s.%s", self.__class__.__name__, test_name)
+        logger.info("=" * 80)
 
         # Get OAuth scopes from test method or class (if using decorators)
         scopes = self._extract_scopes()
@@ -59,10 +71,14 @@ class BaseApiTest:
         # Allow customization
         self.customize_api_request_context(self._api_request_context)
 
-        logger.info("Test setup completed")
+        logger.info("Test setup completed for: %s.%s", self.__class__.__name__, test_name)
 
-    def teardown_method(self):
+    def teardown_method(self, method=None):
         """Teardown method called after each test (pytest fixture)."""
+        test_name = method.__name__ if method else "unknown"
+        logger.info("=" * 80)
+        logger.info("Completing test: %s.%s", self.__class__.__name__, test_name)
+        logger.info("=" * 80)
         if self._api_request_context:
             self._api_request_context.dispose()
         if self._unauthenticated_api_request_context:

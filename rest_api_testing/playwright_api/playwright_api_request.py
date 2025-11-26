@@ -24,6 +24,8 @@ class PlaywrightApiRequest:
         self._query_params: Dict[str, str] = {}
         self._response: Optional[APIResponse] = None
         self._json_response: Optional[Dict] = None
+        # Lazy load config to avoid circular imports
+        self._config = None
 
     # HTTP Method Builders
     def get(self, url: str) -> "PlaywrightApiRequest":
@@ -88,6 +90,125 @@ class PlaywrightApiRequest:
         self._query_params.update(params)
         return self
 
+    def _get_config(self):
+        """Lazy load config to avoid circular imports."""
+        if self._config is None:
+            from rest_api_testing.config import get_config
+            self._config = get_config()
+        return self._config
+
+    def _mask_sensitive_headers(self, headers: Dict[str, str]) -> Dict[str, str]:
+        """Mask sensitive headers for logging."""
+        config = self._get_config()
+        if not config.log_mask_sensitive_headers:
+            return headers
+
+        masked = headers.copy()
+        sensitive_keys = ["authorization", "x-api-key", "api-key", "cookie"]
+        for key in masked.keys():
+            if any(sensitive in key.lower() for sensitive in sensitive_keys):
+                value = masked[key]
+                if value:
+                    # Show first few chars and mask the rest
+                    if len(value) > 10:
+                        masked[key] = value[:10] + "***"
+                    else:
+                        masked[key] = "***"
+        return masked
+
+    def _log_request(self) -> None:
+        """Log request details."""
+        config = self._get_config()
+        logger.info("-" * 80)
+        logger.info("REQUEST: %s %s", self._method, self._url)
+        logger.info("-" * 80)
+
+        # Log headers (masked if configured)
+        if self._headers:
+            masked_headers = self._mask_sensitive_headers(self._headers)
+            logger.info("Headers:")
+            for key, value in masked_headers.items():
+                logger.info("  %s: %s", key, value)
+
+        # Log query parameters
+        if self._query_params:
+            logger.info("Query Parameters:")
+            for key, value in self._query_params.items():
+                logger.info("  %s: %s", key, value)
+
+        # Log body if configured
+        if config.log_request_body and self._body is not None:
+            logger.info("Request Body:")
+            try:
+                if isinstance(self._body, dict):
+                    body_str = json.dumps(self._body, indent=2)
+                elif isinstance(self._body, str):
+                    # Try to pretty-print if it's JSON
+                    try:
+                        body_dict = json.loads(self._body)
+                        body_str = json.dumps(body_dict, indent=2)
+                    except (json.JSONDecodeError, TypeError):
+                        body_str = self._body
+                else:
+                    body_str = str(self._body)
+                # Log body with indentation
+                for line in body_str.split("\n"):
+                    logger.info("  %s", line)
+            except Exception as e:
+                logger.warning("Failed to format request body for logging: %s", e)
+                logger.info("  %s", str(self._body)[:500])  # First 500 chars
+
+    def _log_response(self) -> None:
+        """Log response details."""
+        if self._response is None:
+            return
+
+        config = self._get_config()
+        logger.info("-" * 80)
+        logger.info("RESPONSE: %d %s", self._response.status, self._response.status_text)
+        logger.info("-" * 80)
+
+        # Log response headers
+        response_headers = dict(self._response.headers)
+        if response_headers:
+            logger.info("Response Headers:")
+            for key, value in response_headers.items():
+                logger.info("  %s: %s", key, value)
+
+        # Log response body if configured
+        if config.log_response_body:
+            try:
+                content_type = self._response.headers.get("content-type", "")
+                response_text = self._response.text()
+
+                if response_text:
+                    logger.info("Response Body:")
+                    # Try to pretty-print JSON
+                    if "application/json" in content_type:
+                        try:
+                            body_dict = json.loads(response_text)
+                            body_str = json.dumps(body_dict, indent=2)
+                            for line in body_str.split("\n"):
+                                logger.info("  %s", line)
+                        except (json.JSONDecodeError, TypeError):
+                            # Not valid JSON, log as-is (truncated if too long)
+                            if len(response_text) > 1000:
+                                logger.info("  %s... (truncated)", response_text[:1000])
+                            else:
+                                for line in response_text.split("\n"):
+                                    logger.info("  %s", line)
+                    else:
+                        # Non-JSON response, log truncated
+                        if len(response_text) > 1000:
+                            logger.info("  %s... (truncated, %d chars total)", response_text[:1000], len(response_text))
+                        else:
+                            for line in response_text.split("\n"):
+                                logger.info("  %s", line)
+            except Exception as e:
+                logger.warning("Failed to log response body: %s", e)
+
+        logger.info("-" * 80)
+
     # Execute the request
     def _execute(self) -> APIResponse:
         """Execute the HTTP request."""
@@ -120,7 +241,8 @@ class PlaywrightApiRequest:
             separator = "&" if "?" in self._url else "?"
             self._url = f"{self._url}{separator}{'&'.join(query_parts)}"
 
-        logger.debug("Executing %s request to %s", self._method, self._url)
+        # Log request details
+        self._log_request()
 
         # Execute request based on method
         method_map = {
@@ -145,6 +267,9 @@ class PlaywrightApiRequest:
                     self._json_response = json.loads(response_text)
             except Exception as e:
                 logger.warning("Failed to parse JSON response: %s", e)
+
+        # Log response details
+        self._log_response()
 
         return self._response
 
