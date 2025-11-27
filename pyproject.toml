@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "Proprietary"}
 authors = [
-    {name = "Westfield Group", email = "dev@westfieldgrp.com"}
+    {name = "Westfield Group", email = "it-application-engineering@westfieldgrp.com"}
 ]
 keywords = ["testing", "api", "rest", "playwright", "integration-tests"]
 classifiers = [
