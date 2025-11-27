@@ -10,8 +10,9 @@ A Python-based REST API testing framework using Playwright, pytest, and Jinja2. 
 - **Jinja2 Templates** - Generate JSON request bodies from templates
 - **CSV Data Loading** - Load test data from CSV files only
 - **JWT Authentication** - Automatic token retrieval from PING Federate
+- **OAuth Scope Declaration** - Declare OAuth scopes at class or method level
 - **Configurable** - Environment-based configuration with .env files
-- **Token Caching** - Efficient token management with caching
+- **Token Caching** - Efficient token management with caching (with Bypass option)
 - **Pythonic API** - Clean, idiomatic Python patterns
 
 ## Installation
@@ -279,5 +280,5 @@ This is a proprietary testing framework for internal use.
 
 ## Support
 
-For issues and questions, please contact the development team.
+For issues and questions, please contact the application engineering team.
 
