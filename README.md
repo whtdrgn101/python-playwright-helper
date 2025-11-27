@@ -10,7 +10,7 @@ A Python-based REST API testing framework using Playwright, pytest, and Jinja2. 
 - **Jinja2 Templates** - Generate JSON request bodies from templates
 - **CSV Data Loading** - Load test data from CSV files only
 - **JWT Authentication** - Automatic token retrieval from PING Federate
-- **Configurable** - Properties-based configuration
+- **Configurable** - Environment-based configuration with .env files
 - **Token Caching** - Efficient token management with caching
 - **Pythonic API** - Clean, idiomatic Python patterns
 
@@ -88,36 +88,55 @@ See `INSTALL.md` for detailed troubleshooting steps.
 
 ## Configuration
 
-### 1. Environment Variables
+Configuration is managed through `.env` files or environment variables. The framework uses Pythonic naming conventions (snake_case) for all configuration options.
 
-Set the following environment variables:
+### 1. Create .env File
+
+Create a `.env` file in your project root (you can copy from `.env.example`):
 
 ```bash
-export PING_CLIENT_ID=your-client-id
-export PING_CLIENT_SECRET=your-client-secret
+cp .env.example .env
 ```
 
-### 2. Application Properties
+### 2. Configure Your Settings
 
-Create `application.properties` in your project root or in a `config/` directory:
+Edit the `.env` file with your configuration:
 
-```properties
+```env
 # PING Federate Configuration
-ping.federate.base.url=https://your-ping-federate-server.com
-ping.federate.token.endpoint=/as/token.oauth2
-ping.federate.client.id=${PING_CLIENT_ID}
-ping.federate.client.secret=${PING_CLIENT_SECRET}
-ping.federate.grant.type=client_credentials
+PING_FEDERATE_BASE_URL=https://your-ping-federate-server.com
+PING_FEDERATE_TOKEN_ENDPOINT=/as/token.oauth2
+PING_FEDERATE_CLIENT_ID=your-client-id
+PING_FEDERATE_CLIENT_SECRET=your-client-secret
+PING_FEDERATE_GRANT_TYPE=client_credentials
 
 # API Base URL
-api.base.url=https://your-api-server.com/api
+API_BASE_URL=https://your-api-server.com/api
 
 # Test Configuration
-test.timeout=30000
-test.connection.timeout=10000
+TEST_TIMEOUT=30000
+TEST_CONNECTION_TIMEOUT=10000
+
+# Logging Configuration
+LOG_DIRECTORY=logs
+LOG_LEVEL=INFO
+LOG_REQUEST_BODY=true
+LOG_RESPONSE_BODY=true
+LOG_MASK_SENSITIVE_HEADERS=true
 ```
 
-**Note:** Environment variables take precedence over properties file values.
+### 3. Environment Variables (Alternative)
+
+You can also set configuration via environment variables instead of using a `.env` file:
+
+```bash
+export PING_FEDERATE_BASE_URL=https://your-ping-federate-server.com
+export PING_FEDERATE_CLIENT_ID=your-client-id
+export PING_FEDERATE_CLIENT_SECRET=your-client-secret
+export API_BASE_URL=https://your-api-server.com/api
+```
+
+**Note:** Environment variables take precedence over `.env` file values. This is useful for CI/CD pipelines or when you want to override specific settings without modifying the `.env` file.
 
 ## Writing Tests
 
@@ -132,7 +151,7 @@ class TestMyAPI(BaseApiTest):
     
     def test_get_endpoint(self):
         """Test GET endpoint"""
-        response = self.authenticated_request().get("/my/endpoint")
+        response = self.authenticated_request.get("/my/endpoint")
         
         response.should_have.status_code(200)
         response.should_have.json_path("data.id", exists=True)
@@ -174,7 +193,7 @@ def test_create_user(self):
     json_body = self.render_template("templates/user-create.json.j2", user_data)
     
     # Make authenticated POST request
-    response = self.authenticated_request().post("/users", body=json_body)
+    response = self.authenticated_request.post("/users", body=json_body)
     
     response.should_have.status_code(201)
     response.should_have.json_path("id", exists=True)
@@ -187,7 +206,7 @@ The framework provides a Pythonic API for response validation:
 ```python
 def test_response_validation(self):
     """Example of Pythonic response validation"""
-    response = self.authenticated_request().get("/users/123")
+    response = self.authenticated_request.get("/users/123")
     
     # Fluent validation API
     response.should_have.status_code(200)
@@ -225,6 +244,26 @@ pytest -v
 pytest --cov=rest_api_testing
 ```
 
+## Logging
+
+The framework automatically logs test execution details:
+
+- **Configuration logging** - Full configuration (with sensitive values masked) is logged at test suite startup
+- **Request logging** - All HTTP requests are logged with method, URL, headers, and body
+- **Response logging** - All HTTP responses are logged with status, headers, and body
+- **File logging** - Logs are written to timestamped files in the configured log directory (default: `logs/`)
+- **Console logging** - Logs are also output to the console
+
+Log files are automatically rotated (10MB per file, 5 backups) and can be configured via `.env`:
+
+```env
+LOG_DIRECTORY=logs
+LOG_LEVEL=INFO
+LOG_REQUEST_BODY=true
+LOG_RESPONSE_BODY=true
+LOG_MASK_SENSITIVE_HEADERS=true
+```
+
 ## Dependencies
 
 - **Playwright** - API and browser testing
@@ -232,6 +271,7 @@ pytest --cov=rest_api_testing
 - **Jinja2** - Template engine for JSON generation
 - **pydantic** - Configuration and data validation
 - **pydantic-settings** - Settings management
+- **python-dotenv** - Environment variable management
 
 ## License
 
