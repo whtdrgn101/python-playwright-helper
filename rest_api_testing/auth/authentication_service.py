@@ -1,11 +1,11 @@
 """Service for authenticating with PING Federate and retrieving JWT tokens."""
 
+import asyncio
 import logging
 import time
 from typing import Optional, Dict
 from dataclasses import dataclass
-from threading import Lock
-from playwright.sync_api import Playwright, APIRequestContext, sync_playwright
+from playwright.async_api import Playwright, APIRequestContext, async_playwright
 from rest_api_testing.config import get_config
 
 logger = logging.getLogger(__name__)
@@ -27,7 +27,7 @@ class AuthenticationService:
     """Service for authenticating with PING Federate and retrieving JWT tokens."""
 
     _instance: Optional["AuthenticationService"] = None
-    _lock: Lock = Lock()
+    _lock = asyncio.Lock()
 
     def __init__(self):
         """Initialize the authentication service."""
@@ -35,27 +35,27 @@ class AuthenticationService:
         self._playwright: Optional[Playwright] = None
         self._api_request_context: Optional[APIRequestContext] = None
         self._token_cache: Dict[str, TokenCacheEntry] = {}
-        self._initialize_playwright()
+        self._playwright_lock = asyncio.Lock()
 
-    def _initialize_playwright(self) -> None:
-        """Initialize Playwright for token requests."""
+    async def _ensure_playwright(self) -> None:
+        """Ensure Playwright is initialized (async)."""
         if self._playwright is None:
-            self._playwright = sync_playwright().start()
-            # Create a basic API request context for token requests
-            self._api_request_context = self._playwright.request.new_context(
-                ignore_https_errors=True  # Use only in test environments
-            )
+            async with self._playwright_lock:
+                if self._playwright is None:
+                    self._playwright = await async_playwright().start()
+                    # Create a basic API request context for token requests
+                    self._api_request_context = await self._playwright.request.new_context(
+                        ignore_https_errors=True  # Use only in test environments
+                    )
 
     @classmethod
     def get_instance(cls) -> "AuthenticationService":
         """Get singleton instance of AuthenticationService."""
         if cls._instance is None:
-            with cls._lock:
-                if cls._instance is None:
-                    cls._instance = cls()
+            cls._instance = cls()
         return cls._instance
 
-    def get_access_token(
+    async def get_access_token(
         self, scopes: Optional[list[str]] = None, bypass_cache: bool = False
     ) -> str:
         """
@@ -68,6 +68,8 @@ class AuthenticationService:
         Returns:
             JWT access token
         """
+        await self._ensure_playwright()
+        
         scopes = scopes or []
         scope_key = self._create_scope_key(scopes)
 
@@ -122,17 +124,18 @@ class AuthenticationService:
             logger.debug("Including scopes in token request: %s", " ".join(scopes))
 
         # Make token request
-        response = self._api_request_context.post(
+        response = await self._api_request_context.post(
             token_url,
             data=form_data,
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
 
         if response.status != 200:
+            response_text = await response.text()
             logger.error(
                 "Failed to retrieve token. Status: %d, Body: %s",
                 response.status,
-                response.text(),
+                response_text,
             )
             raise RuntimeError(
                 f"Failed to retrieve JWT token from PING Federate. Status: {response.status}"
@@ -140,9 +143,10 @@ class AuthenticationService:
 
         # Parse JSON response
         try:
-            json_response = response.json()
+            json_response = await response.json()
         except Exception as e:
-            logger.error("Failed to parse token response as JSON: %s", response.text())
+            response_text = await response.text()
+            logger.error("Failed to parse token response as JSON: %s", response_text)
             raise RuntimeError("Failed to parse PING Federate response") from e
 
         access_token = json_response.get("access_token")
@@ -195,4 +199,3 @@ class AuthenticationService:
         """Invalidate all cached tokens."""
         logger.info("Invalidating all cached JWT tokens")
         self._token_cache.clear()
-

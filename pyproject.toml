@@ -1,6 +1,6 @@
 [project]
 name = "rest-api-testing"
-version = "1.0.0"
+version = "1.1.0"
 description = "Python-based REST API testing framework using Playwright"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -63,9 +63,7 @@ testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-# Disable pytest-asyncio plugin - using synchronous Playwright API
-# If you need async tests in the future, remove this line and set asyncio_mode
-addopts = "-p no:asyncio"
+asyncio_mode = "auto"
 markers = [
     "smoke: marks tests as smoke tests (deselect with '-m \"not smoke\"')",
     "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",

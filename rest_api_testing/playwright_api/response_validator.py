@@ -3,7 +3,7 @@
 import logging
 import re
 from typing import Any, Callable, List, Optional, Union, TYPE_CHECKING
-from playwright.sync_api import APIResponse
+from playwright.async_api import APIResponse
 
 if TYPE_CHECKING:
     from rest_api_testing.playwright_api.playwright_api_request import PlaywrightApiRequest
@@ -18,17 +18,15 @@ class ResponseValidator:
         """Initialize the response validator."""
         self._request = request
 
-    @property
-    def _response(self) -> APIResponse:
+    async def _response(self) -> APIResponse:
         """Get the API response."""
-        return self._request.response
+        return await self._request.response()
 
-    @property
-    def _json(self) -> Optional[dict]:
+    async def _json(self) -> Optional[dict]:
         """Get the JSON response."""
-        return self._request.json
+        return await self._request.json()
 
-    def status_code(self, expected: Union[int, List[int]]) -> "ResponseValidator":
+    async def status_code(self, expected: Union[int, List[int]]) -> "ResponseValidator":
         """
         Validate response status code.
 
@@ -41,23 +39,24 @@ class ResponseValidator:
         Raises:
             AssertionError: If status code doesn't match
         """
-        actual = self._response.status
+        response = await self._response()
+        actual = response.status
         if isinstance(expected, list):
             if actual not in expected:
-                response_text = self._response.text()[:500]  # Limit response text
+                response_text = (await response.text())[:500]  # Limit response text
                 raise AssertionError(
                     f"Expected status code to be one of {expected} but got {actual}. "
                     f"Response: {response_text}"
                 )
         else:
             if actual != expected:
-                response_text = self._response.text()[:500]  # Limit response text
+                response_text = (await response.text())[:500]  # Limit response text
                 raise AssertionError(
                     f"Expected status {expected} but got {actual}. Response: {response_text}"
                 )
         return self
 
-    def status_code_in(self, expected_codes: List[int]) -> "ResponseValidator":
+    async def status_code_in(self, expected_codes: List[int]) -> "ResponseValidator":
         """
         Validate that response status code is in the list of expected codes.
 
@@ -67,9 +66,9 @@ class ResponseValidator:
         Returns:
             Self for method chaining
         """
-        return self.status_code(expected_codes)
+        return await self.status_code(expected_codes)
 
-    def content_type(self, expected: str) -> "ResponseValidator":
+    async def content_type(self, expected: str) -> "ResponseValidator":
         """
         Validate response content type.
 
@@ -82,14 +81,15 @@ class ResponseValidator:
         Raises:
             AssertionError: If content type doesn't match
         """
-        content_type = self._response.headers.get("content-type", "")
+        response = await self._response()
+        content_type = response.headers.get("content-type", "")
         if expected not in content_type:
             raise AssertionError(
                 f"Expected content type containing '{expected}' but got '{content_type}'"
             )
         return self
 
-    def header(self, name: str, expected: str) -> "ResponseValidator":
+    async def header(self, name: str, expected: str) -> "ResponseValidator":
         """
         Validate response header value.
 
@@ -103,14 +103,15 @@ class ResponseValidator:
         Raises:
             AssertionError: If header value doesn't match
         """
-        actual = self._response.headers.get(name.lower(), "")
+        response = await self._response()
+        actual = response.headers.get(name.lower(), "")
         if actual != expected:
             raise AssertionError(
                 f"Header {name}: expected '{expected}' but got '{actual}'"
             )
         return self
 
-    def json_path(
+    async def json_path(
         self,
         path: str,
         equals: Optional[Any] = None,
@@ -134,7 +135,7 @@ class ResponseValidator:
         Raises:
             AssertionError: If validation fails
         """
-        json_data = self._json
+        json_data = await self._json()
         if json_data is None:
             raise AssertionError("Response is not JSON or could not be parsed")
 
@@ -192,4 +193,3 @@ class ResponseValidator:
                 )
 
         return self
-

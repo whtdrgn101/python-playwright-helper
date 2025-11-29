@@ -3,10 +3,11 @@
 import json
 import logging
 from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
-from playwright.sync_api import APIRequestContext, APIResponse
+from playwright.async_api import APIRequestContext, APIResponse
 
 if TYPE_CHECKING:
     from rest_api_testing.playwright_api.response_validator import ResponseValidator
+    from rest_api_testing.playwright_api.async_property import AsyncShouldHave, AsyncExtract, AsyncResponse
 
 logger = logging.getLogger(__name__)
 
@@ -158,7 +159,7 @@ class PlaywrightApiRequest:
                 logger.warning("Failed to format request body for logging: %s", e)
                 logger.info("  %s", str(self._body)[:500])  # First 500 chars
 
-    def _log_response(self) -> None:
+    async def _log_response(self) -> None:
         """Log response details."""
         if self._response is None:
             return
@@ -179,7 +180,7 @@ class PlaywrightApiRequest:
         if config.log_response_body:
             try:
                 content_type = self._response.headers.get("content-type", "")
-                response_text = self._response.text()
+                response_text = await self._response.text()
 
                 if response_text:
                     logger.info("Response Body:")
@@ -210,7 +211,7 @@ class PlaywrightApiRequest:
         logger.info("-" * 80)
 
     # Execute the request
-    def _execute(self) -> APIResponse:
+    async def _execute(self) -> APIResponse:
         """Execute the HTTP request."""
         if self._method is None or self._url is None:
             raise ValueError("HTTP method and URL must be set before execution")
@@ -256,61 +257,63 @@ class PlaywrightApiRequest:
         if self._method not in method_map:
             raise ValueError(f"Unsupported HTTP method: {self._method}")
 
-        self._response = method_map[self._method](self._url, **options)
+        self._response = await method_map[self._method](self._url, **options)
 
         # Parse JSON response if content type is JSON
         content_type = self._response.headers.get("content-type", "")
         if "application/json" in content_type:
             try:
-                response_text = self._response.text()
+                response_text = await self._response.text()
                 if response_text:
                     self._json_response = json.loads(response_text)
             except Exception as e:
                 logger.warning("Failed to parse JSON response: %s", e)
 
         # Log response details
-        self._log_response()
+        await self._log_response()
 
         return self._response
 
-    # Response validation builder
+    # Response validation builder - use property-like access
     @property
-    def should_have(self) -> "ResponseValidator":
-        """Get response validator for fluent validation."""
-        if self._response is None:
-            self._execute()
-        from rest_api_testing.playwright_api.response_validator import ResponseValidator
-        return ResponseValidator(self)
+    def should_have(self):  # type: ignore
+        """Get response validator for fluent validation (async property)."""
+        from rest_api_testing.playwright_api.async_property import AsyncShouldHave
+        return AsyncShouldHave(self)
 
-    # Response extraction
+    # Response extraction - use property-like access
     @property
-    def extract(self) -> "ResponseExtractor":
-        """Get response extractor for extracting values."""
-        if self._response is None:
-            self._execute()
-        return ResponseExtractor(self)
+    def extract(self):  # type: ignore
+        """Get response extractor for extracting values (async property)."""
+        from rest_api_testing.playwright_api.async_property import AsyncExtract
+        return AsyncExtract(self)
 
-    # Getter methods
-    @property
-    def response(self) -> APIResponse:
-        """Get the API response."""
+    # Getter methods - make them execute request if needed
+    async def _ensure_response(self) -> APIResponse:
+        """Ensure response exists, executing request if needed."""
         if self._response is None:
-            self._execute()
+            await self._execute()
         return self._response
 
     @property
-    def json(self) -> Optional[Dict]:
+    def response(self):  # type: ignore
+        """Get the API response (async property)."""
+        from rest_api_testing.playwright_api.async_property import AsyncResponse
+        return AsyncResponse(self)
+
+    async def json(self) -> Optional[Dict]:
         """Get the JSON response as a dictionary."""
-        if self._json_response is None and self._response is not None:
+        response = await self._ensure_response()
+        if self._json_response is None:
             try:
-                response_text = self._response.text()
+                response_text = await response.text()
                 if response_text:
                     self._json_response = json.loads(response_text)
             except Exception as e:
                 logger.warning("Failed to parse JSON response: %s", e)
         return self._json_response
 
-    def json_path(self, path: str, default: Any = None) -> Any:
+    async def json_path(self, path: str, default: Any = None) -> Any:
         """
         Extract a value from JSON response using a JSON path.
 
@@ -321,7 +324,7 @@ class PlaywrightApiRequest:
         Returns:
             Value at the JSON path, or default if not found
         """
-        json_data = self.json
+        json_data = await self.json()
         if json_data is None:
             return default
 
@@ -356,24 +359,23 @@ class ResponseExtractor:
         """Initialize the response extractor."""
         self._request = request
 
-    @property
-    def response(self) -> APIResponse:
+    async def response(self) -> APIResponse:
         """Get the raw API response."""
-        return self._request.response
+        return await self._request.response()
 
-    def as_string(self) -> str:
+    async def as_string(self) -> str:
         """Get response as string."""
-        return self._request.response.text()
+        resp = await self._request.response()
+        return await resp.text()
 
-    def as_json(self) -> Optional[Dict]:
+    async def as_json(self) -> Optional[Dict]:
         """Get response as JSON dictionary."""
-        return self._request.json
+        return await self._request.json()
 
-    def as_dict(self) -> Optional[Dict]:
+    async def as_dict(self) -> Optional[Dict]:
         """Get response as dictionary (alias for as_json)."""
-        return self._request.json
+        return await self._request.json()
 
-    def path(self, json_path: str, default: Any = None) -> Any:
+    async def path(self, json_path: str, default: Any = None) -> Any:
         """Extract value from JSON response using JSON path."""
-        return self._request.json_path(json_path, default)
-
+        return await self._request.json_path(json_path, default)
