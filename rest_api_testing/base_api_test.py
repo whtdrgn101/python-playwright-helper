@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import pytest
-from typing import Optional, List
+from typing import Optional, List, Dict
 from playwright.async_api import Playwright, APIRequestContext, async_playwright
 from rest_api_testing.config import get_config
 from rest_api_testing.auth import AuthenticationService
@@ -19,7 +19,7 @@ class BaseApiTest:
     _config = None
     _auth_service = None
     _template_service = None
-    _playwright: Optional[Playwright] = None
+    _playwright_instances: Dict[type, Playwright] = {}  # Per-class Playwright instances
     _initialized = False
     _scopes = None
     _bypass_cache = False
@@ -55,7 +55,7 @@ class BaseApiTest:
                     log_config(base_cls._config)
                     base_cls._auth_service = AuthenticationService.get_instance()
                     base_cls._template_service = TemplateService.get_instance()
-                    base_cls._playwright = await async_playwright().start()
+                    # Note: Playwright instances are now created per test class, not globally
 
                     base_cls._initialized = True
                     logger.info(
@@ -74,6 +74,19 @@ class BaseApiTest:
         """Setup and teardown fixture called before/after each test (pytest fixture)."""
         # Ensure static resources are initialized
         await self._ensure_initialized()
+        
+        # Create a FRESH Playwright instance for each test to avoid context corruption
+        test_class = self.__class__
+        logger.debug("Creating fresh Playwright instance for test: %s.%s", 
+                    test_class.__name__, request.function.__name__ if request.function else "unknown")
+        # Store per-test instance temporarily
+        self._test_playwright = await async_playwright().start()
+        logger.info(
+            "Test Playwright initialized for %s.%s. API Base URL: %s",
+            test_class.__name__,
+            request.function.__name__ if request.function else "unknown",
+            BaseApiTest._config.api_base_url,
+        )
         
         # Debug: Verify initialization
         logger.debug("After _ensure_initialized: self.__class__=%s, BaseApiTest=%s", 
@@ -105,15 +118,19 @@ class BaseApiTest:
         
         yield
         
-        # Teardown
+        # Teardown - Clean up per-test Playwright instance
         test_name = request.function.__name__ if request.function else "unknown"
         logger.info("=" * 80)
         logger.info("Completing test: %s.%s", self.__class__.__name__, test_name)
         logger.info("=" * 80)
-        if self._api_request_context:
-            await self._api_request_context.dispose()
-        if self._unauthenticated_api_request_context:
-            await self._unauthenticated_api_request_context.dispose()
+        # Clear references but don't dispose contexts - they'll be cleaned with Playwright
+        self._api_request_context = None
+        self._unauthenticated_api_request_context = None
+        # Stop the per-test Playwright instance
+        if hasattr(self, '_test_playwright') and self._test_playwright:
+            await self._test_playwright.stop()
+            self._test_playwright = None
+            logger.debug("Stopped Playwright instance for test")
 
     def customize_api_request_context(
         self, context: APIRequestContext
@@ -352,11 +369,11 @@ class BaseApiTest:
 
     @property
     def playwright(self) -> Playwright:
-        """Get the Playwright instance."""
-        # Access through the base class to ensure we get the shared instance
-        cls = BaseApiTest
-        if cls._playwright is None:
+        """Get the Playwright instance for this test."""
+        # Each test gets its own fresh Playwright instance to avoid context corruption
+        if not hasattr(self, '_test_playwright') or self._test_playwright is None:
             raise RuntimeError(
-                "Playwright instance not initialized. Ensure _ensure_initialized() has been called."
+                "Playwright instance not initialized for this test. "
+                "Ensure the test fixture has been called."
             )
-        return cls._playwright
+        return self._test_playwright

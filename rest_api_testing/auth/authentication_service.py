@@ -27,13 +27,12 @@ class AuthenticationService:
     """Service for authenticating with PING Federate and retrieving JWT tokens."""
 
     _instance: Optional["AuthenticationService"] = None
-    _lock = asyncio.Lock()
+    _lock: Optional[asyncio.Lock] = None
 
     def __init__(self):
         """Initialize the authentication service."""
         self.config = get_config()
         self._playwright: Optional[Playwright] = None
-        self._api_request_context: Optional[APIRequestContext] = None
         self._token_cache: Dict[str, TokenCacheEntry] = {}
         self._playwright_lock = asyncio.Lock()
 
@@ -43,10 +42,7 @@ class AuthenticationService:
             async with self._playwright_lock:
                 if self._playwright is None:
                     self._playwright = await async_playwright().start()
-                    # Create a basic API request context for token requests
-                    self._api_request_context = await self._playwright.request.new_context(
-                        ignore_https_errors=True  # Use only in test environments
-                    )
+                    logger.debug("Initialized Playwright for authentication service")
 
     @classmethod
     def get_instance(cls) -> "AuthenticationService":
@@ -123,11 +119,18 @@ class AuthenticationService:
             form_data["scope"] = " ".join(scopes)
             logger.debug("Including scopes in token request: %s", " ".join(scopes))
 
+        # Create a fresh API request context for this token request
+        # This ensures isolation from test API contexts
+        logger.debug("Creating fresh API request context for token request")
+        api_request_context = await self._playwright.request.new_context(
+            ignore_https_errors=True  # Use only in test environments
+        )
+        
         # Make token request
-        response = await self._api_request_context.post(
+        logger.debug("Making POST request to: %s", token_url)
+        response = await api_request_context.post(
             token_url,
-            data=form_data,
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            form=form_data,
         )
 
         if response.status != 200:
@@ -148,6 +151,9 @@ class AuthenticationService:
             response_text = await response.text()
             logger.error("Failed to parse token response as JSON: %s", response_text)
             raise RuntimeError("Failed to parse PING Federate response") from e
+        
+        # NOTE: We don't dispose the context here as it can corrupt the Playwright connection
+        # Let Python garbage collection handle cleanup
 
         access_token = json_response.get("access_token")
         if not access_token:
