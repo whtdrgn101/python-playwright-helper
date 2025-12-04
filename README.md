@@ -150,13 +150,14 @@ from rest_api_testing import BaseApiTest
 class TestMyAPI(BaseApiTest):
     """Example API test class"""
     
-    def test_get_endpoint(self):
+    async def test_get_endpoint(self):
         """Test GET endpoint"""
-        response = self.authenticated_request.get("/my/endpoint")
+        request = await self.authenticated_request()
+        response = request.get("/my/endpoint")
         
-        response.should_have.status_code(200)
-        response.should_have.json_path("data.id", exists=True)
-        response.should_have.json_path("data.name", equals="expected_value")
+        await response.should_have.status_code(200)
+        await response.should_have.json_path("data.id", exists=True)
+        await response.should_have.json_path("data.name", equals="expected_value")
 ```
 
 ### Using Templates with CSV Data
@@ -185,7 +186,7 @@ Jane,Smith,jane.smith@example.com,25,555-5678
 
 **Usage in test:**
 ```python
-def test_create_user(self):
+async def test_create_user(self):
     """Test creating a user from CSV data"""
     # Load first row from CSV
     user_data = self.load_csv_as_dict("templates/user-data.csv")
@@ -194,10 +195,11 @@ def test_create_user(self):
     json_body = self.render_template("templates/user-create.json.j2", user_data)
     
     # Make authenticated POST request
-    response = self.authenticated_request.post("/users", body=json_body)
+    request = await self.authenticated_request()
+    response = request.post("/users", body=json_body)
     
-    response.should_have.status_code(201)
-    response.should_have.json_path("id", exists=True)
+    await response.should_have.status_code(201)
+    await response.should_have.json_path("id", exists=True)
 ```
 
 ### Pythonic Response Validation
@@ -205,28 +207,29 @@ def test_create_user(self):
 The framework provides a Pythonic API for response validation:
 
 ```python
-def test_response_validation(self):
+async def test_response_validation(self):
     """Example of Pythonic response validation"""
-    response = self.authenticated_request.get("/users/123")
+    request = await self.authenticated_request()
+    response = request.get("/users/123")
     
     # Fluent validation API
-    response.should_have.status_code(200)
-    response.should_have.content_type("application/json")
+    await response.should_have.status_code(200)
+    await response.should_have.content_type("application/json")
     
     # JSON path validation
-    response.should_have.json_path("id", equals=123)
-    response.should_have.json_path("name", exists=True)
-    response.should_have.json_path("email", matches=r"^[^@]+@[^@]+\.[^@]+$")
+    await response.should_have.json_path("id", equals=123)
+    await response.should_have.json_path("name", exists=True)
+    await response.should_have.json_path("email", matches=r"^[^@]+@[^@]+\.[^@]+$")
     
     # Extract values
-    user_id = response.json_path("id")
-    user_name = response.json_path("name")
+    user_id = await response.json_path("id")
+    user_name = await response.json_path("name")
     
     # Custom validation with callables
-    response.should_have.json_path("age", validate=lambda x: 18 <= x <= 100)
+    await response.should_have.json_path("age", validate=lambda x: 18 <= x <= 100)
     
     # Multiple status codes
-    response.should_have.status_code_in([200, 201])
+    await response.should_have.status_code_in([200, 201])
 ```
 
 ## Running Tests
