@@ -1,6 +1,6 @@
 [project]
 name = "rest-api-testing"
-version = "1.1.0"
+version = "1.1.1"
 description = "Python-based REST API testing framework using Playwright"
 readme = "README.md"
 requires-python = ">=3.9"
