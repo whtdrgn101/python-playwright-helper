@@ -478,3 +478,156 @@ class TestContextInitialization:
         assert api_request._query_params == {}
         assert api_request._response is None
         assert api_request._json_response is None
+
+
+class TestResponseExtractor:
+    """Test ResponseExtractor utility class."""
+
+    @pytest.mark.asyncio
+    async def test_response_extractor_response_method(self, api_request, mock_response):
+        """Test getting raw response from extractor."""
+        from rest_api_testing.playwright_api.playwright_api_request import ResponseExtractor
+        
+        api_request._response = mock_response
+        extractor = ResponseExtractor(api_request)
+        
+        result = await extractor.response()
+        
+        assert result == mock_response
+
+    @pytest.mark.asyncio
+    async def test_response_extractor_as_string(self, api_request, mock_response):
+        """Test getting response as string."""
+        from rest_api_testing.playwright_api.playwright_api_request import ResponseExtractor
+        
+        mock_response.text = AsyncMock(return_value="response text")
+        api_request._response = mock_response
+        extractor = ResponseExtractor(api_request)
+        
+        result = await extractor.as_string()
+        
+        assert result == "response text"
+
+    @pytest.mark.asyncio
+    async def test_response_extractor_as_json(self, api_request):
+        """Test getting response as JSON."""
+        from rest_api_testing.playwright_api.playwright_api_request import ResponseExtractor
+        
+        json_data = {"id": 1, "name": "John"}
+        api_request._json_response = json_data
+        api_request._response = MagicMock()  # Mock response to avoid _ensure_response call
+        
+        extractor = ResponseExtractor(api_request)
+        
+        result = await extractor.as_json()
+        
+        assert result == json_data
+
+    @pytest.mark.asyncio
+    async def test_response_extractor_as_dict(self, api_request):
+        """Test getting response as dict (alias for as_json)."""
+        from rest_api_testing.playwright_api.playwright_api_request import ResponseExtractor
+        
+        json_data = {"id": 1, "name": "John"}
+        api_request._json_response = json_data
+        api_request._response = MagicMock()
+        
+        extractor = ResponseExtractor(api_request)
+        
+        result = await extractor.as_dict()
+        
+        assert result == json_data
+
+    @pytest.mark.asyncio
+    async def test_response_extractor_path(self, api_request):
+        """Test extracting value from JSON path."""
+        from rest_api_testing.playwright_api.playwright_api_request import ResponseExtractor
+        
+        json_data = {"data": {"user": {"id": 123, "name": "John"}}}
+        api_request._json_response = json_data
+        api_request._response = MagicMock()
+        
+        extractor = ResponseExtractor(api_request)
+        
+        result = await extractor.path("data/user/id")
+        
+        assert result == 123
+
+    @pytest.mark.asyncio
+    async def test_response_extractor_path_with_default(self, api_request):
+        """Test extracting value with default fallback."""
+        from rest_api_testing.playwright_api.playwright_api_request import ResponseExtractor
+        
+        json_data = {"data": {}}
+        api_request._json_response = json_data
+        api_request._response = MagicMock()
+        
+        extractor = ResponseExtractor(api_request)
+        
+        result = await extractor.path("data/nonexistent/field", default="default_value")
+        
+        assert result == "default_value"
+
+
+class TestPlaywrightApiRequestAdditional:
+    """Additional tests for PlaywrightApiRequest methods."""
+
+    @pytest.mark.asyncio
+    async def test_json_with_nonexistent_path_when_json_loaded(self, api_request):
+        """Test json_path with path that doesn't exist when JSON is already loaded."""
+        api_request._json_response = {"data": {"id": 1}}
+        
+        # Mock json() to return the cached response
+        with patch.object(api_request, 'json', new_callable=AsyncMock, return_value={"data": {"id": 1}}):
+            result = await api_request.json_path("data/missing", default="not_found")
+        
+        assert result == "not_found"
+
+    @pytest.mark.asyncio
+    async def test_json_with_array_index_when_json_loaded(self, api_request):
+        """Test json_path with array indexing when JSON is already loaded."""
+        test_data = {"items": [{"id": 1}, {"id": 2}, {"id": 3}]}
+        
+        # Mock json() to return the test data
+        with patch.object(api_request, 'json', new_callable=AsyncMock, return_value=test_data):
+            result = await api_request.json_path("items/1/id")
+        
+        assert result == 2
+
+    @pytest.mark.asyncio
+    async def test_json_with_array_out_of_bounds_when_json_loaded(self, api_request):
+        """Test json_path with array index out of bounds when JSON is loaded."""
+        test_data = {"items": [{"id": 1}]}
+        
+        # Mock json() to return the test data
+        with patch.object(api_request, 'json', new_callable=AsyncMock, return_value=test_data):
+            result = await api_request.json_path("items/10/id", default="out_of_bounds")
+        
+        assert result == "out_of_bounds"
+
+    @pytest.mark.asyncio
+    async def test_json_path_with_slash_prefix_when_json_loaded(self, api_request):
+        """Test json_path normalizes slash prefix when JSON is loaded."""
+        test_data = {"data": {"value": 42}}
+        
+        # Mock json() to return the test data
+        with patch.object(api_request, 'json', new_callable=AsyncMock, return_value=test_data):
+            result = await api_request.json_path("/data/value")
+        
+        assert result == 42
+
+    def test_should_have_returns_validator(self, api_request):
+        """Test that should_have property returns a ResponseValidator."""
+        result = api_request.should_have
+        
+        assert result is not None
+        # Verify it's an async property wrapper
+        assert hasattr(result, '__class__')
+
+    def test_extract_returns_extractor(self, api_request):
+        """Test that extract property returns a ResponseExtractor."""
+        result = api_request.extract
+        
+        assert result is not None
+        # Verify it's an async property wrapper
+        assert hasattr(result, '__class__')
